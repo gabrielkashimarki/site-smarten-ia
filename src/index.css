@@ -2,5 +2,4 @@
 @tailwind components;
 @tailwind utilities;
 
-html { scroll-behavior: smooth; }
-body { @apply bg-brand text-white font-sans antialiased; }
+/* Deixa o site renderizar com o CSS original do WordPress — não sobrescrever */
