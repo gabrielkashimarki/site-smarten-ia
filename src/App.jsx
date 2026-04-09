@@ -1,20 +1,36 @@
-import { Routes, Route, useNavigate, useLocation } from 'react-router-dom'
-import { useEffect, useRef } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
+import { useEffect, useRef, useMemo } from 'react'
+import manifest from './mirror/manifest.json'
 
-import homeHtml from './mirror/home.html?raw'
-import sobreHtml from './mirror/sobre.html?raw'
-import assessoriaHtml from './mirror/solucoes-assessoria.html?raw'
-import execucaoHtml from './mirror/solucoes-execucao.html?raw'
-import conteudoHtml from './mirror/conteudo.html?raw'
-import diagnosticoHtml from './mirror/diagnostico.html?raw'
-import contatoHtml from './mirror/contato.html?raw'
-import casesHtml from './mirror/cases.html?raw'
-import privacidadeHtml from './mirror/politica-de-privacidade.html?raw'
+// Load all page HTMLs at build time
+const pageModules = import.meta.glob('./mirror/pages/*.html', {
+  query: '?raw',
+  import: 'default',
+  eager: true,
+})
 
-function MirrorPage({ html }) {
-  const ref = useRef(null)
-  const navigate = useNavigate()
+// Build route → html lookup
+const routeHtml = {}
+for (const [route, filename] of Object.entries(manifest)) {
+  const key = `./mirror/pages/${filename}`
+  if (pageModules[key]) routeHtml[route] = pageModules[key]
+}
+
+function normalize(p) {
+  if (!p) return '/'
+  const clean = p.replace(/\/+$/, '')
+  return clean === '' ? '/' : clean
+}
+
+export default function App() {
   const location = useLocation()
+  const navigate = useNavigate()
+  const ref = useRef(null)
+
+  const html = useMemo(() => {
+    const path = normalize(location.pathname)
+    return routeHtml[path] || routeHtml['/'] || '<h1>Página não encontrada</h1>'
+  }, [location.pathname])
 
   useEffect(() => {
     window.scrollTo(0, 0)
@@ -23,50 +39,33 @@ function MirrorPage({ html }) {
   useEffect(() => {
     const root = ref.current
     if (!root) return
-
-    // Intercept internal link clicks for SPA navigation
     function onClick(e) {
       const a = e.target.closest('a')
       if (!a) return
       const href = a.getAttribute('href')
       if (!href) return
       if (href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:')) return
-      if (href.startsWith('http') && !href.includes('smarten.digital')) return
       if (a.target === '_blank') return
 
       let path = href
       if (path.startsWith('http')) {
-        try { path = new URL(path).pathname } catch { return }
+        try {
+          const u = new URL(path)
+          if (!u.hostname.includes('smarten.digital') && u.hostname !== window.location.hostname) return
+          path = u.pathname
+        } catch {
+          return
+        }
       }
-      // Only intercept routes we handle
-      const routes = ['/', '/smarten/sobre', '/solucoes-assessoria', '/solucoes-execucao',
-                      '/conteudo', '/diagnostico', '/contato', '/cases', '/politica-de-privacidade']
-      const clean = path.replace(/\/$/, '') || '/'
-      if (routes.includes(clean)) {
+      const norm = normalize(path)
+      if (routeHtml[norm]) {
         e.preventDefault()
-        navigate(clean)
+        navigate(norm)
       }
     }
     root.addEventListener('click', onClick)
     return () => root.removeEventListener('click', onClick)
-  }, [navigate])
+  }, [navigate, html])
 
   return <div ref={ref} dangerouslySetInnerHTML={{ __html: html }} />
-}
-
-export default function App() {
-  return (
-    <Routes>
-      <Route path="/" element={<MirrorPage html={homeHtml} />} />
-      <Route path="/smarten/sobre" element={<MirrorPage html={sobreHtml} />} />
-      <Route path="/solucoes-assessoria" element={<MirrorPage html={assessoriaHtml} />} />
-      <Route path="/solucoes-execucao" element={<MirrorPage html={execucaoHtml} />} />
-      <Route path="/conteudo" element={<MirrorPage html={conteudoHtml} />} />
-      <Route path="/diagnostico" element={<MirrorPage html={diagnosticoHtml} />} />
-      <Route path="/contato" element={<MirrorPage html={contatoHtml} />} />
-      <Route path="/cases" element={<MirrorPage html={casesHtml} />} />
-      <Route path="/politica-de-privacidade" element={<MirrorPage html={privacidadeHtml} />} />
-      <Route path="*" element={<MirrorPage html={homeHtml} />} />
-    </Routes>
-  )
 }
